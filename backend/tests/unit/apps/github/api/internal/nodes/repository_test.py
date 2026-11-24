@@ -6,7 +6,11 @@ from apps.github.api.internal.nodes.issue import IssueNode
 from apps.github.api.internal.nodes.milestone import MilestoneNode
 from apps.github.api.internal.nodes.organization import OrganizationNode
 from apps.github.api.internal.nodes.release import ReleaseNode
-from apps.github.api.internal.nodes.repository import RECENT_ISSUES_LIMIT, RepositoryNode
+from apps.github.api.internal.nodes.repository import (
+    LATEST_RELEASE_PREFETCH,
+    RECENT_ISSUES_LIMIT,
+    RepositoryNode,
+)
 from apps.github.api.internal.nodes.repository_contributor import RepositoryContributorNode
 from tests.unit.apps.common.graphql_node_base_test import GraphQLNodeBaseTest
 
@@ -137,6 +141,31 @@ class TestRepositoryNode(GraphQLNodeBaseTest):
         field = self._get_field_by_name("latest_release", RepositoryNode)
         result = field.base_resolver.wrapped_func(None, mock_repository)
         assert result == "v1.0.0"
+
+    def test_latest_release_method_prefetched(self):
+        """Test latest_release returns the first prefetched release when available."""
+        mock_repository = Mock()
+        mock_repository.prefetched_latest_releases = ["v2.0.0", "v1.0.0"]
+
+        field = self._get_field_by_name("latest_release", RepositoryNode)
+        result = field.base_resolver.wrapped_func(None, mock_repository)
+        assert result == "v2.0.0"
+
+    def test_latest_release_method_prefetched_empty(self):
+        """Test latest_release returns None when prefetched releases list is empty."""
+        mock_repository = Mock()
+        mock_repository.prefetched_latest_releases = []
+
+        field = self._get_field_by_name("latest_release", RepositoryNode)
+        result = field.base_resolver.wrapped_func(None, mock_repository)
+        assert result is None
+
+    def test_latest_release_prefetch_configuration(self):
+        """Test latest_release field prefetch configuration."""
+        assert LATEST_RELEASE_PREFETCH.prefetch_through == "releases"
+        assert LATEST_RELEASE_PREFETCH.prefetch_to == "prefetched_latest_releases"
+        assert LATEST_RELEASE_PREFETCH.to_attr == "prefetched_latest_releases"
+        assert LATEST_RELEASE_PREFETCH.queryset.query.order_by == ("-published_at",)
 
     def test_project_method(self):
         """Test project method resolution."""

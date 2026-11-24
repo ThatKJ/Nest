@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Annotated
 
 import strawberry
 import strawberry_django
+from django.db.models import Prefetch
 
 from apps.common.utils import normalize_limit
 from apps.github.api.internal.nodes.issue import IssueNode
@@ -11,10 +12,21 @@ from apps.github.api.internal.nodes.milestone import MilestoneNode
 from apps.github.api.internal.nodes.organization import OrganizationNode
 from apps.github.api.internal.nodes.release import ReleaseNode
 from apps.github.api.internal.nodes.repository_contributor import RepositoryContributorNode
+from apps.github.models.release import Release
 from apps.github.models.repository import Repository
 
 if TYPE_CHECKING:
     from apps.owasp.api.internal.nodes.project import ProjectNode
+
+LATEST_RELEASE_PREFETCH = Prefetch(
+    "releases",
+    queryset=Release.objects.filter(
+        is_draft=False,
+        is_pre_release=False,
+        published_at__isnull=False,
+    ).order_by("-published_at"),
+    to_attr="prefetched_latest_releases",
+)
 
 MAX_LIMIT = 1000
 RECENT_ISSUES_LIMIT = 5
@@ -50,9 +62,12 @@ class RepositoryNode(strawberry.relay.Node):
         """Resolve languages."""
         return list(root.languages.keys())
 
-    @strawberry_django.field
+    @strawberry_django.field(prefetch_related=[LATEST_RELEASE_PREFETCH])
     def latest_release(self, root: Repository) -> str | None:
         """Resolve latest release."""
+        if isinstance(releases := getattr(root, "prefetched_latest_releases", None), list):
+            return releases[0] if releases else None
+
         return root.latest_release
 
     @strawberry_django.field(prefetch_related=["project_set"])
